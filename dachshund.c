@@ -83,6 +83,47 @@ int set_smplstmnt_lincnst_raw(smplstmnt *st, size_t i, size_t nz,
   return 0;
 }
 
+int set_smplstmnt_quadcnst_raw(smplstmnt *st, size_t i, size_t nz,
+                              const size_t idx[nz], const size_t n[nz],
+                              size_t deg, int64_t *phi, int64_t *b) {
+  size_t j, k;
+
+  if (i >= st->k) {
+    fprintf(
+        stderr,
+        "ERROR in set_smplstmnt_lincnst_raw(): Constraint %zu does not exist\n",
+        i);
+    return 1;
+  }
+
+  sparsecnst *cnst = &st->cnst[i];
+  if (cnst->idx) {
+    fprintf(stderr, "ERROR in set_smplstmnt_lincnst_raw(): Constraint has "
+                    "already been set\n");
+    return 2;
+  }
+  for (j = 0; j < nz; j++) {
+    k = idx[j];
+    if (k >= st->r) {
+      fprintf(stderr,
+              "ERROR in set_smplstmnt_lincnst_raw(): Witness vector %zu does "
+              "not exist\n",
+              k);
+      return 3;
+    }
+    if (n[j] * deg != st->n[k]) {
+      fprintf(stderr, "ERROR in set_smplstmnt_lincnst_raw(): Mismatch in "
+                      "witness vector length\n");
+      return 4;
+    }
+  }
+
+  init_sparsecnst_raw(cnst, st->r, nz, idx, n, deg, 1, b == NULL);
+  (void)set_sparsecnst_raw(cnst, st->h, nz, idx, n, deg, phi,
+                           b); // errors can not happen
+  return 0;
+}
+
 void free_smplstmnt(smplstmnt *st) {
   size_t i;
 
