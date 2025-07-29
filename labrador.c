@@ -1044,6 +1044,8 @@ void amortize(statement *ost, witness *owt, proof *pi,
   polxvec_decompose(vh, hx, (r * r + r) / 2, cpp->fu, cpp->bu);
   polxvec_frompolyvec(hx, vh, m - h);
 
+  /* where is quadratic garbage polynomial computation??? */
+
   /* second outer commitment */
   polxvec_mul_extension(ost->u2, comkey, hx, m - h, cpp->kappa1, 1);
   polzvec_frompolxvec(pi->u2, ost->u2, cpp->u2len);
