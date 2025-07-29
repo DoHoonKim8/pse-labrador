@@ -39,6 +39,9 @@ void init_sparsecnst_raw(sparsecnst *cnst, size_t r, size_t nz,
 int set_sparsecnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
                        const size_t idx[nz], const size_t n[nz], size_t deg,
                        int64_t *phi, int64_t *b);
+int set_quadcnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
+                       const size_t idx[nz], size_t deg,
+                       int64_t **quad_coeffs, int64_t *b);
 void free_sparsecnst(sparsecnst *cnst);
 void sparsecnst_eval(polx *b, const sparsecnst *cnst, polx *sx[],
                      const witness *wt);

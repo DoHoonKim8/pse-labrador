@@ -131,13 +131,104 @@ int set_sparsecnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
     shake128_inc_absorb(&shakectx, hashbuf, deg * N * QBYTES);
   }
 
+  // `j` is over the witness vector
   for (j = 0; j < nz; j++) {
+    // for each witness, `k` is over the elements in the witness
     for (k = 0; k < n[j]; k++) {
       polzvec_fromint64vec(t, 1, deg, phi);
       polzvec_topolxvec(&cnst->phi[j][k * deg], t, deg);
       polzvec_bitpack(hashbuf, t, deg);
       shake128_inc_absorb(&shakectx, hashbuf, deg * N * QBYTES);
       phi += deg * N;
+    }
+  }
+
+  shake128_inc_finalize(&shakectx);
+  shake128_inc_squeeze(h, 16, &shakectx);
+  return 0;
+}
+
+// duplicate with `triangularidx` in labrador.c
+static size_t triangularidx(size_t i, size_t j, size_t r) {
+  if (i > j) { // swap
+    j ^= i;
+    i ^= j;
+    j ^= i;
+  }
+  // (0, 0) (0, 1) (0, 2) (0, 3)
+  // (1, 0) (1, 1) (1, 2)
+  // (2, 0) (2, 1)
+  // (3, 0)
+  // r = 3, i = 2, j = 1
+  i = i * r - (i * i + i) / 2 + j;
+  return i;
+}
+
+int set_quadcnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
+                       const size_t idx[nz], size_t deg,
+                       int64_t **quad_coeffs, int64_t *b) {
+  size_t j, k;
+  polz t[deg];
+  __attribute__((aligned(16))) uint8_t hashbuf[deg * N * QBYTES];
+  shake128incctx shakectx;
+
+  if (nz != cnst->nz) {
+    fprintf(stderr, "ERROR in set_quadcnst_raw(): Mismatch in number of "
+                    "affected vectors\n");
+    return 1;
+  }
+  if (deg != cnst->deg) {
+    fprintf(stderr,
+            "ERROR in set_quadcnst_raw(): Mismatch in extension degree\n");
+    return 2;
+  }
+  if ((b && !cnst->b) || (!b && cnst->b)) {
+    fprintf(stderr, "ERROR in set_quadcnst_raw(): Mismatch in homogeneity\n");
+    return 3;
+  }
+  for (j = 0; j < nz; j++) {
+    if (idx[j] != cnst->idx[j]) {
+      fprintf(stderr,
+              "ERROR in set_quadcnst_raw(): Mismatch in index of %zu-th "
+              "affected vector\n",
+              j);
+      return 4;
+    }
+    if (cnst->off[j]) // FIXME
+      return 5;
+    if (cnst->mult[j] != 1)
+      return 6;
+  }
+
+  cnst->a->len = (nz * nz + nz) / 2;
+
+  shake128_inc_init(&shakectx);
+  shake128_inc_absorb(&shakectx, h, 16);
+
+  if (b) {
+    polzvec_fromint64vec(t, 1, deg, b);
+    polzvec_topolxvec(cnst->b, t, deg);
+    polzvec_bitpack(hashbuf, t, deg);
+    shake128_inc_absorb(&shakectx, hashbuf, deg * N * QBYTES);
+  }
+
+  /* fill in cnst->a with appropriate values */
+  // `j`-th row
+  for (j = 0; j < nz; j++) {
+    // `k`-th col
+    for (k = 0; k < nz; k++) {
+      if (j + k > nz) continue;
+      polzvec_fromint64vec(t, 1, deg, quad_coeffs);
+      size_t idx = triangularidx(j, k, nz);
+      // set cnst->a->rows
+      cnst->a->rows[idx] = j;
+      // set cnst->a->cols
+      cnst->a->rows[idx] = k;
+      // set cnst->a->coeffs
+      polzvec_topolxvec(&cnst->a->coeffs[idx], t, deg);
+      polzvec_bitpack(hashbuf, t, deg);
+      shake128_inc_absorb(&shakectx, hashbuf, deg * N * QBYTES);
+      quad_coeffs += deg * N;
     }
   }
 
