@@ -58,6 +58,9 @@ void polz_setcoeff_fromint64(polz *r, int64_t a, int k) {
   r->limbs[L - 1].c[k] = a;
 }
 
+// reading `len` `polz` vectors from int64_t array
+// and each `polz` vector corresponds to `deg` number of `polz`
+// and each `polz` corresponds to `N` int64_t coefficients
 void polzvec_fromint64vec(polz *r, size_t len, size_t deg,
                           const int64_t v[len * deg * N]) {
   size_t i, j, k;

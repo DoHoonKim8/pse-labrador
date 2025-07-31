@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 polx *init_sparsecnst_half(sparsecnst *cnst, size_t r, size_t nz, size_t buflen,
                            size_t deg, int quadratic, int homogeneous) {
@@ -22,15 +23,23 @@ polx *init_sparsecnst_half(sparsecnst *cnst, size_t r, size_t nz, size_t buflen,
 
   cnst->deg = deg;
   cnst->nz = nz;
-  cnst->a->len = 0;
   if (quadratic) {
-    buf = _malloc((r * r + r) * sizeof(size_t));
-    cnst->a->rows = (size_t *)buf;
-    cnst->a->cols = (size_t *)buf + (r * r + r) / 2;
+    // buf = _malloc((r * r + r) * sizeof(size_t));
+    // cnst->a->rows = (size_t *)buf;
+    // cnst->a->cols = (size_t *)buf + (r * r + r) / 2;
 
-    buf = _aligned_alloc(64, r * sizeof(polx));
-    cnst->a->coeffs = (polx *)buf;
+    // buf = _aligned_alloc(64, r * sizeof(polx));
+    // cnst->a->coeffs = (polx *)buf;
+    size_t tri_len = r * (r + 1) / 2;
+
+    buf = _malloc(2 * tri_len * sizeof(size_t));
+    cnst->a->rows = (size_t *)buf;
+    cnst->a->cols = cnst->a->rows + tri_len;
+
+    cnst->a->coeffs = (polx *)_aligned_alloc(64, (size_t)tri_len * deg * sizeof(polx));
+    cnst->a->len = tri_len;
   } else {
+    cnst->a->len = 0;
     cnst->a->rows = NULL;
     cnst->a->cols = NULL;
     cnst->a->coeffs = NULL;
@@ -156,17 +165,17 @@ static size_t triangularidx(size_t i, size_t j, size_t r) {
     j ^= i;
   }
   // (0, 0) (0, 1) (0, 2) (0, 3)
-  // (1, 0) (1, 1) (1, 2)
-  // (2, 0) (2, 1)
-  // (3, 0)
-  // r = 3, i = 2, j = 1
+  //        (1, 1) (1, 2) (1, 3)
+  //               (2, 2) (2, 3)
+  //                      (3, 3)
+  // r = 4, i = 1, j = 2
   i = i * r - (i * i + i) / 2 + j;
   return i;
 }
 
 int set_quadcnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
                        const size_t idx[nz], size_t deg,
-                       int64_t **quad_coeffs, int64_t *b) {
+                       int64_t *quad_coeffs, int64_t *b) {
   size_t j, k;
   polz t[deg];
   __attribute__((aligned(16))) uint8_t hashbuf[deg * N * QBYTES];
@@ -200,7 +209,17 @@ int set_quadcnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
       return 6;
   }
 
-  cnst->a->len = (nz * nz + nz) / 2;
+  const size_t tri_len_expected = nz * (nz + 1) / 2;
+
+  assert(cnst->a != NULL);
+  assert(cnst->deg == deg);
+  assert(cnst->a->len == tri_len_expected);   // must match triangular length
+  assert(cnst->a->rows != NULL && cnst->a->cols != NULL && cnst->a->coeffs != NULL);
+
+  fprintf(stderr,
+    "[DBG] nz=%zu deg=%zu tri_len=%zu a->len=%zu rows=%p cols=%p coeffs=%p\n",
+    nz, deg, tri_len_expected, cnst->a->len,
+    (void*)cnst->a->rows, (void*)cnst->a->cols, (void*)cnst->a->coeffs);
 
   shake128_inc_init(&shakectx);
   shake128_inc_absorb(&shakectx, h, 16);
@@ -208,6 +227,7 @@ int set_quadcnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
   if (b) {
     polzvec_fromint64vec(t, 1, deg, b);
     polzvec_topolxvec(cnst->b, t, deg);
+    polx_print(cnst->b);
     polzvec_bitpack(hashbuf, t, deg);
     shake128_inc_absorb(&shakectx, hashbuf, deg * N * QBYTES);
   }
@@ -216,19 +236,31 @@ int set_quadcnst_raw(sparsecnst *cnst, uint8_t h[16], size_t nz,
   // `j`-th row
   for (j = 0; j < nz; j++) {
     // `k`-th col
-    for (k = 0; k < nz; k++) {
-      if (j + k > nz) continue;
+    for (k = j; k < nz; k++) {
+      // quad_coeffs
+      // [ ... , ... , ... , ... ]
+      // [ ... , ... , ... , ... ]
+      // LaBRADOR extension ring of `deg`
+      // 
       polzvec_fromint64vec(t, 1, deg, quad_coeffs);
       size_t idx = triangularidx(j, k, nz);
       // set cnst->a->rows
       cnst->a->rows[idx] = j;
       // set cnst->a->cols
-      cnst->a->rows[idx] = k;
+      cnst->a->cols[idx] = k;
       // set cnst->a->coeffs
-      polzvec_topolxvec(&cnst->a->coeffs[idx], t, deg);
+      polzvec_topolxvec(&cnst->a->coeffs[idx * deg], t, deg);
       polzvec_bitpack(hashbuf, t, deg);
       shake128_inc_absorb(&shakectx, hashbuf, deg * N * QBYTES);
       quad_coeffs += deg * N;
+    }
+  }
+
+  // `j` is over the witness vector
+  for (j = 0; j < nz; j++) {
+    // for each witness, `k` is over the elements in the witness
+    for (k = 0; k < 1; k++) {
+      polxvec_setzero(&cnst->phi[j][k * deg], deg);
     }
   }
 
@@ -292,8 +324,13 @@ int sparsecnst_check(const sparsecnst *cnst, polx *sx[], const witness *wt) {
   polx b[deg2];
 
   sparsecnst_eval(b, cnst, sx, wt);
-  if (cnst->b)
+  if (cnst->b) {
+    fprintf(stderr, "b");
+    polx_print(b);
+    fprintf(stderr, "cnst->b");
+    polx_print(cnst->b);
     polxvec_sub(b, b, cnst->b, deg2);
+  }
 
   if (cnst->deg)
     ret = polxvec_iszero(b, deg2);

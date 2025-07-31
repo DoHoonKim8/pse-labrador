@@ -83,9 +83,10 @@ int set_smplstmnt_lincnst_raw(smplstmnt *st, size_t i, size_t nz,
   return 0;
 }
 
+// \sum_{i,j} a_{ij} <s_i, s_j> = b
 int set_smplstmnt_quadcnst_raw(smplstmnt *st, size_t i, size_t nz,
                               const size_t idx[nz], const size_t n[nz],
-                              size_t deg, int64_t **quad_coeffs, int64_t *b) {
+                              size_t deg, int64_t *quad_coeffs, int64_t *b) {
   size_t j, k;
 
   if (i >= st->k) {

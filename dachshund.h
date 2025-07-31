@@ -49,7 +49,7 @@ set_smplstmnt_lincnst_raw(smplstmnt *st, size_t i, size_t nz,
 __attribute__((visibility("default"))) int
 set_smplstmnt_quadcnst_raw(smplstmnt *st, size_t i, size_t nz,
                               const size_t idx[nz], const size_t n[nz],
-                              size_t deg, int64_t **quad_coeffs, int64_t *b);
+                              size_t deg, int64_t *quad_coeffs, int64_t *b);
 void print_smplstmnt_pp(const smplstmnt *st);
 #define free_smplstmnt NAMESPACE(free_smplstmnt)
 __attribute__((visibility("default"))) void free_smplstmnt(smplstmnt *st);
